@@ -5,17 +5,22 @@ import mongoose from 'mongoose';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 
+
+
 // Route imports
 import authRoutes from './routes/auth.js';
 import charityRoutes from './routes/charity.js';
 import profileRoutes from './routes/profile.js';
+import externalRoutes from './routes/external.js';
+import campsRoutes from './routes/camps.js';
+
 
 // Load environment variables
 dotenv.config();
 
 // Initialize express app
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = 5002; // Changed from 5001 to avoid port conflict
 
 // Create HTTP server
 const httpServer = createServer(app);
@@ -40,6 +45,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/charity', charityRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/external', externalRoutes);
+app.use('/api/camps', campsRoutes);
+
 
 // Root route
 app.get('/', (req, res) => {

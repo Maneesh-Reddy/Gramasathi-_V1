@@ -1,78 +1,91 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link } from 'react-router-dom';
-import { ChevronLeft, Upload, Calendar, X } from 'lucide-react';
-import useApi from '../../hooks/useApi';
+import { 
+  Calendar, 
+  Upload, 
+  X, 
+  Info, 
+  ArrowLeft 
+} from 'lucide-react';
 import { useAuth } from '../../hooks/AuthContext';
+import useApi from '../../hooks/useApi';
+import { Button } from '../../components/ui/Button';
+import { useVoiceContext } from '../../hooks/VoiceContext';
 
 const CreateCampaign: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const api = useApi();
+  const { speak } = useVoiceContext();
   
-  const [title, setTitle] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
-  const [category, setCategory] = useState<string>('elderly');
-  const [targetAmount, setTargetAmount] = useState<number>(5000);
-  const [endDate, setEndDate] = useState<string>(
-    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
-  const [village, setVillage] = useState<string>('');
-  const [district, setDistrict] = useState<string>('');
-  const [state, setState] = useState<string>('');
-  const [beneficiaries, setBeneficiaries] = useState<number>(1);
+  // Form state
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [targetAmount, setTargetAmount] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [village, setVillage] = useState('');
+  const [district, setDistrict] = useState('');
+  const [state, setState] = useState('');
+  const [beneficiaries, setBeneficiaries] = useState('');
   const [images, setImages] = useState<FileList | null>(null);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Check if user is authenticated
-  if (!isAuthenticated) {
-    navigate('/login');
-  }
+  // Validation state
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Check authentication
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login', { state: { from: '/charity/create' } });
+    }
+  }, [isAuthenticated, navigate]);
   
   // Handle image selection
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
+    if (!files) return;
     
-    if (files && files.length > 0) {
-      // Limit to 5 images
-      const selectedFiles = Array.from(files).slice(0, 5);
-      
-      // Create preview URLs
-      const previews = selectedFiles.map(file => URL.createObjectURL(file));
-      setPreviewImages(previews);
-      
-      // Set the files for upload
-      const dataTransfer = new DataTransfer();
-      selectedFiles.forEach(file => {
-        dataTransfer.items.add(file);
-      });
-      
-      setImages(dataTransfer.files);
+    // Limit to 5 images
+    if (files.length > 5) {
+      setErrors(prev => ({ ...prev, images: t('campaign.maxImagesError') }));
+      return;
     }
+    
+    setImages(files);
+    
+    // Generate preview URLs
+    const previews: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      previews.push(URL.createObjectURL(files[i]));
+    }
+    setPreviewImages(previews);
+    
+    // Clear any previous errors
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors.images;
+      return newErrors;
+    });
   };
   
-  // Remove an image
+  // Remove image from selection
   const removeImage = (index: number) => {
+    const newPreviews = [...previewImages];
+    newPreviews.splice(index, 1);
+    setPreviewImages(newPreviews);
+    
     if (images) {
-      const newImages = Array.from(images);
-      newImages.splice(index, 1);
-      
-      // Create new FileList
       const dataTransfer = new DataTransfer();
-      newImages.forEach(file => {
-        dataTransfer.items.add(file);
-      });
-      
-      setImages(dataTransfer.files.length > 0 ? dataTransfer.files : null);
-      
-      // Update preview images
-      const newPreviews = [...previewImages];
-      URL.revokeObjectURL(newPreviews[index]);
-      newPreviews.splice(index, 1);
-      setPreviewImages(newPreviews);
+      for (let i = 0; i < images.length; i++) {
+        if (i !== index) {
+          dataTransfer.items.add(images[i]);
+        }
+      }
+      setImages(dataTransfer.files);
     }
   };
   
@@ -80,67 +93,64 @@ const CreateCampaign: React.FC = () => {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     
-    if (!title.trim()) {
-      newErrors.title = t('common.fieldRequired');
+    if (!title.trim()) newErrors.title = t('validation.required');
+    if (!description.trim()) newErrors.description = t('validation.required');
+    if (!category.trim()) newErrors.category = t('validation.required');
+    
+    if (!targetAmount.trim()) {
+      newErrors.targetAmount = t('validation.required');
+    } else if (isNaN(Number(targetAmount)) || Number(targetAmount) <= 0) {
+      newErrors.targetAmount = t('validation.invalidAmount');
     }
     
-    if (!description.trim()) {
-      newErrors.description = t('common.fieldRequired');
-    }
-    
-    if (!targetAmount || targetAmount <= 0) {
-      newErrors.targetAmount = t('common.invalidAmount');
-    }
-    
-    if (!endDate) {
-      newErrors.endDate = t('common.fieldRequired');
+    if (!endDate.trim()) {
+      newErrors.endDate = t('validation.required');
     } else {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       const selectedDate = new Date(endDate);
-      
+      const today = new Date();
       if (selectedDate <= today) {
-        newErrors.endDate = t('common.dateMustBeFuture');
+        newErrors.endDate = t('validation.futureDate');
       }
     }
     
-    if (!beneficiaries || beneficiaries <= 0) {
-      newErrors.beneficiaries = t('common.invalidNumber');
-    }
+    if (!village.trim()) newErrors.village = t('validation.required');
+    if (!district.trim()) newErrors.district = t('validation.required');
+    if (!state.trim()) newErrors.state = t('validation.required');
+    if (!beneficiaries.trim()) newErrors.beneficiaries = t('validation.required');
     
     setErrors(newErrors);
-    
     return Object.keys(newErrors).length === 0;
   };
   
-  // Submit form
+  // Form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
+      speak(t('campaign.formErrors'));
       return;
     }
     
-    setIsSubmitting(true);
-    
     try {
-      // Create FormData
+      setIsSubmitting(true);
+      
+      // Create form data
       const formData = new FormData();
       formData.append('title', title);
       formData.append('description', description);
       formData.append('category', category);
-      formData.append('targetAmount', targetAmount.toString());
-      formData.append('endDate', new Date(endDate).toISOString());
+      formData.append('targetAmount', targetAmount);
+      formData.append('endDate', endDate);
       formData.append('village', village);
       formData.append('district', district);
       formData.append('state', state);
-      formData.append('beneficiaries', beneficiaries.toString());
+      formData.append('beneficiaries', beneficiaries);
       
       // Add images
       if (images) {
-        Array.from(images).forEach(file => {
-          formData.append('images', file);
-        });
+        for (let i = 0; i < images.length; i++) {
+          formData.append('images', images[i]);
+        }
       }
       
       const response = await api.request('/charity', {
@@ -149,252 +159,244 @@ const CreateCampaign: React.FC = () => {
         isFormData: true
       });
       
-      if (response.success && response.data) {
-        // Redirect to campaign page
-        navigate(`/charity/${response.data._id}`);
+      if (response.data && response.data.id) {
+        speak(t('campaign.createSuccess'));
+        navigate(`/charity/${response.data.id}`);
+      } else {
+        throw new Error('Invalid response from server');
       }
-    } catch (error) {
-      console.error('Create campaign error:', error);
+    } catch (err) {
+      console.error('Error creating campaign:', err);
+      setErrors(prev => ({ ...prev, form: t('campaign.createError') }));
+      speak(t('campaign.createError'));
     } finally {
       setIsSubmitting(false);
     }
   };
   
+  const categoryOptions = [
+    { value: 'education', label: t('categories.education') },
+    { value: 'healthcare', label: t('categories.healthcare') },
+    { value: 'disaster', label: t('categories.disaster') },
+    { value: 'infrastructure', label: t('categories.infrastructure') },
+    { value: 'community', label: t('categories.community') },
+    { value: 'other', label: t('categories.other') }
+  ];
+  
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Back button */}
-      <div className="mb-6">
-        <Link
-          to="/charity"
-          className="inline-flex items-center text-gray-600 hover:text-primary-600"
-        >
-          <ChevronLeft size={18} className="mr-1" />
-          {t('common.back')}
-        </Link>
-      </div>
-      
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">
-            {t('charity.campaign.create')}
-          </h1>
-          
-          <form onSubmit={handleSubmit}>
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center mb-6">
+          <Link to="/charity" className="mr-4">
+            <ArrowLeft size={20} />
+          </Link>
+          <h1 className="text-2xl font-bold">{t('campaign.createNew')}</h1>
+        </div>
+        
+        {errors.form && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <span className="block sm:inline">{errors.form}</span>
+          </div>
+        )}
+        
+        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6">
+          <div className="space-y-6">
             {/* Title */}
-            <div className="mb-4">
+            <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('charity.form.title')} *
+                {t('campaign.title')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.title ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-3 py-2 border rounded-md ${errors.title ? 'border-red-500' : 'border-gray-300'}`}
+                placeholder={t('campaign.titlePlaceholder')}
               />
-              {errors.title && (
-                <p className="mt-1 text-sm text-red-600">{errors.title}</p>
-              )}
+              {errors.title && <p className="mt-1 text-sm text-red-500">{errors.title}</p>}
             </div>
             
             {/* Description */}
-            <div className="mb-4">
+            <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('charity.form.description')} *
+                {t('campaign.description')} <span className="text-red-500">*</span>
               </label>
               <textarea
                 id="description"
-                rows={5}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.description ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-              {errors.description && (
-                <p className="mt-1 text-sm text-red-600">{errors.description}</p>
-              )}
+                rows={6}
+                className={`w-full px-3 py-2 border rounded-md ${errors.description ? 'border-red-500' : 'border-gray-300'}`}
+                placeholder={t('campaign.descriptionPlaceholder')}
+              ></textarea>
+              {errors.description && <p className="mt-1 text-sm text-red-500">{errors.description}</p>}
             </div>
             
             {/* Category */}
-            <div className="mb-4">
+            <div>
               <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('charity.form.category')} *
+                {t('campaign.category')} <span className="text-red-500">*</span>
               </label>
               <select
                 id="category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className={`w-full px-3 py-2 border rounded-md ${errors.category ? 'border-red-500' : 'border-gray-300'}`}
               >
-                <option value="elderly">{t('charity.categories.elderly')}</option>
-                <option value="disabled">{t('charity.categories.disabled')}</option>
-                <option value="children">{t('charity.categories.children')}</option>
-                <option value="women">{t('charity.categories.women')}</option>
-                <option value="other">{t('charity.categories.other')}</option>
+                <option value="">{t('campaign.selectCategory')}</option>
+                {categoryOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
+              {errors.category && <p className="mt-1 text-sm text-red-500">{errors.category}</p>}
             </div>
             
             {/* Target Amount */}
-            <div className="mb-4">
+            <div>
               <label htmlFor="targetAmount" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('charity.form.targetAmount')} *
+                {t('campaign.targetAmount')} <span className="text-red-500">*</span>
               </label>
-              <input
-                type="number"
-                id="targetAmount"
-                min="100"
-                value={targetAmount}
-                onChange={(e) => setTargetAmount(Number(e.target.value))}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.targetAmount ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-              {errors.targetAmount && (
-                <p className="mt-1 text-sm text-red-600">{errors.targetAmount}</p>
-              )}
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">₹</span>
+                <input
+                  type="number"
+                  id="targetAmount"
+                  value={targetAmount}
+                  onChange={(e) => setTargetAmount(e.target.value)}
+                  className={`w-full pl-7 px-3 py-2 border rounded-md ${errors.targetAmount ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="10000"
+                  min="1"
+                />
+              </div>
+              {errors.targetAmount && <p className="mt-1 text-sm text-red-500">{errors.targetAmount}</p>}
             </div>
             
             {/* End Date */}
-            <div className="mb-4">
+            <div>
               <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('charity.form.endDate')} *
+                {t('campaign.endDate')} <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Calendar size={16} className="text-gray-400" />
-                </div>
+                <Calendar size={16} className="absolute top-1/2 transform -translate-y-1/2 left-3 text-gray-500" />
                 <input
                   type="date"
                   id="endDate"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className={`w-full pl-10 pr-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                    errors.endDate ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full pl-10 px-3 py-2 border rounded-md ${errors.endDate ? 'border-red-500' : 'border-gray-300'}`}
+                  min={new Date().toISOString().split('T')[0]}
                 />
               </div>
-              {errors.endDate && (
-                <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
-              )}
+              {errors.endDate && <p className="mt-1 text-sm text-red-500">{errors.endDate}</p>}
             </div>
             
             {/* Location */}
-            <div className="mb-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">
-                {t('charity.campaign.location')}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label htmlFor="village" className="block text-xs text-gray-500 mb-1">
-                    {t('charity.form.village')}
-                  </label>
-                  <input
-                    type="text"
-                    id="village"
-                    value={village}
-                    onChange={(e) => setVillage(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="district" className="block text-xs text-gray-500 mb-1">
-                    {t('charity.form.district')}
-                  </label>
-                  <input
-                    type="text"
-                    id="district"
-                    value={district}
-                    onChange={(e) => setDistrict(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="state" className="block text-xs text-gray-500 mb-1">
-                    {t('charity.form.state')}
-                  </label>
-                  <input
-                    type="text"
-                    id="state"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="village" className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('campaign.village')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="village"
+                  value={village}
+                  onChange={(e) => setVillage(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-md ${errors.village ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder={t('campaign.villagePlaceholder')}
+                />
+                {errors.village && <p className="mt-1 text-sm text-red-500">{errors.village}</p>}
+              </div>
+              <div>
+                <label htmlFor="district" className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('campaign.district')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="district"
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-md ${errors.district ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder={t('campaign.districtPlaceholder')}
+                />
+                {errors.district && <p className="mt-1 text-sm text-red-500">{errors.district}</p>}
+              </div>
+              <div>
+                <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('campaign.state')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="state"
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-md ${errors.state ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder={t('campaign.statePlaceholder')}
+                />
+                {errors.state && <p className="mt-1 text-sm text-red-500">{errors.state}</p>}
               </div>
             </div>
             
             {/* Beneficiaries */}
-            <div className="mb-4">
+            <div>
               <label htmlFor="beneficiaries" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('charity.form.beneficiaries')} *
+                {t('campaign.beneficiaries')} <span className="text-red-500">*</span>
               </label>
-              <input
-                type="number"
+              <textarea
                 id="beneficiaries"
-                min="1"
                 value={beneficiaries}
-                onChange={(e) => setBeneficiaries(Number(e.target.value))}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.beneficiaries ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-              {errors.beneficiaries && (
-                <p className="mt-1 text-sm text-red-600">{errors.beneficiaries}</p>
-              )}
+                onChange={(e) => setBeneficiaries(e.target.value)}
+                rows={3}
+                className={`w-full px-3 py-2 border rounded-md ${errors.beneficiaries ? 'border-red-500' : 'border-gray-300'}`}
+                placeholder={t('campaign.beneficiariesPlaceholder')}
+              ></textarea>
+              {errors.beneficiaries && <p className="mt-1 text-sm text-red-500">{errors.beneficiaries}</p>}
             </div>
             
             {/* Images */}
-            <div className="mb-6">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('charity.form.images')}
+                {t('campaign.images')} <span className="text-gray-500">({t('campaign.optional')})</span>
               </label>
-              
               <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
                 <div className="space-y-1 text-center">
                   <Upload className="mx-auto h-12 w-12 text-gray-400" />
                   <div className="flex text-sm text-gray-600">
-                    <label
-                      htmlFor="images"
-                      className="relative cursor-pointer rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500"
-                    >
-                      <span>{t('common.uploadFiles')}</span>
+                    <label htmlFor="images" className="relative cursor-pointer bg-white rounded-md font-medium text-primary hover:text-primary-dark">
+                      <span>{t('campaign.uploadImages')}</span>
                       <input
                         id="images"
                         name="images"
                         type="file"
                         multiple
-                        accept="image/png, image/jpeg, image/jpg, image/webp"
+                        accept="image/*"
                         className="sr-only"
                         onChange={handleImageChange}
                       />
                     </label>
-                    <p className="pl-1">{t('common.orDragAndDrop')}</p>
+                    <p className="pl-1">{t('campaign.dragDrop')}</p>
                   </div>
-                  <p className="text-xs text-gray-500">
-                    PNG, JPG, WEBP {t('common.upTo')} 5MB (max 5 {t('common.images')})
-                  </p>
+                  <p className="text-xs text-gray-500">{t('campaign.imageRequirements')}</p>
                 </div>
               </div>
+              {errors.images && <p className="mt-1 text-sm text-red-500">{errors.images}</p>}
               
-              {/* Preview images */}
+              {/* Image previews */}
               {previewImages.length > 0 && (
-                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                   {previewImages.map((preview, index) => (
                     <div key={index} className="relative group">
-                      <div className="aspect-video rounded-md overflow-hidden bg-gray-100">
-                        <img
-                          src={preview}
-                          alt={`Preview ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
+                      <img
+                        src={preview}
+                        alt={`Preview ${index + 1}`}
+                        className="h-24 w-full object-cover rounded-md"
+                      />
                       <button
                         type="button"
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"
                         onClick={() => removeImage(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
                       >
                         <X size={14} />
                       </button>
@@ -404,18 +406,26 @@ const CreateCampaign: React.FC = () => {
               )}
             </div>
             
-            {/* Submit Button */}
-            <div className="mt-6">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full px-4 py-2 bg-primary-600 text-white font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-              >
-                {isSubmitting ? t('common.creating') : t('charity.form.submit')}
-              </button>
+            {/* Submit button */}
+            <div className="flex items-center justify-end gap-4">
+              <Link to="/charity">
+                <Button variant="outline" type="button">
+                  {t('common.cancel')}
+                </Button>
+              </Link>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="animate-spin mr-2">⟳</span>
+                    {t('common.submitting')}
+                  </>
+                ) : (
+                  t('campaign.createButton')
+                )}
+              </Button>
             </div>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
   );

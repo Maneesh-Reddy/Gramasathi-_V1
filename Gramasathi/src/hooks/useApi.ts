@@ -1,5 +1,8 @@
 import { useState, useCallback } from 'react';
 
+// API URL configuration
+const API_URL = 'http://localhost:5002/api';
+
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   headers?: Record<string, string>;
@@ -32,7 +35,7 @@ function useApi<T = any>() {
 
     // Get token from local storage
     const token = localStorage.getItem('token');
-    
+
     setState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
@@ -46,25 +49,26 @@ function useApi<T = any>() {
         requestHeaders['Authorization'] = `Bearer ${token}`;
       }
 
-      // Add content type if not form data
-      if (!isFormData && body) {
+      // Don't set Content-Type for FormData (browser will set it with boundary)
+      if (!isFormData && method !== 'GET') {
         requestHeaders['Content-Type'] = 'application/json';
       }
 
       // Prepare request options
       const requestOptions: RequestInit = {
         method,
-        headers: requestHeaders
+        headers: requestHeaders,
+        credentials: 'include'
       };
 
-      // Add body if present
-      if (body) {
+      // Add body if needed
+      if (body && method !== 'GET') {
         requestOptions.body = isFormData ? body : JSON.stringify(body);
       }
 
-      // Make the request
-      const apiUrl = window.API_URL || 'http://localhost:5000/api';
-      const response = await fetch(`${apiUrl}${endpoint}`, requestOptions);
+      // Make request
+      const fullUrl = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
+      const response = await fetch(fullUrl, requestOptions);
       const data = await response.json();
 
       // Check if response is ok

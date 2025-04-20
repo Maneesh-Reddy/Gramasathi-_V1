@@ -7,6 +7,8 @@ import './i18n/i18n';
 import { VoiceProvider } from './hooks/VoiceContext';
 import { AuthProvider } from './hooks/AuthContext';
 
+
+
 // Provide API URL as a global variable
 window.API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
