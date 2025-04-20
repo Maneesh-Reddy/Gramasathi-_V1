@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Card from '../../components/ui/Card';
 import { getHealthResources } from '../../data/healthData';
@@ -6,11 +6,9 @@ import useApi from '../../hooks/useApi';
 import {
   GoogleMap,
   Marker,
-  InfoWindow,
-  Autocomplete
+  InfoWindow
 } from '@react-google-maps/api';
 import { useGoogleMaps } from '../../components/GoogleMapsProvider';
-import { MapPin, Search, Crosshair, X, MapIcon } from 'lucide-react';
 
 const mapStyle = { width: '100%', height: '500px' };
 
@@ -90,11 +88,6 @@ const HealthResources: React.FC<HealthResourcesProps> = ({
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [locationSearch, setLocationSearch] = useState('');
-  const [locationPickerMap, setLocationPickerMap] = useState<google.maps.Map | null>(null);
-  const [locationPickerPos, setLocationPickerPos] = useState<{ lat: number; lng: number } | null>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const { isLoaded, loadError } = useGoogleMaps();
   const api = useApi();
   
@@ -102,92 +95,17 @@ const HealthResources: React.FC<HealthResourcesProps> = ({
   useEffect(() => {
     // Default position (India)
     setPos({ lat: 20.5937, lng: 78.9629 });
-    setLocationPickerPos({ lat: 20.5937, lng: 78.9629 });
     
-    // Try to load location from localStorage first
-    const savedLocation = localStorage.getItem('user-location');
-    if (savedLocation) {
-      try {
-        const parsedLocation = JSON.parse(savedLocation);
-        if (parsedLocation && parsedLocation.lat && parsedLocation.lng) {
-          setPos(parsedLocation);
-          setLocationPickerPos(parsedLocation);
-          return; // Skip geolocation if we have saved location
-        }
-      } catch (e) {
-        console.error("Error parsing saved location:", e);
-      }
-    }
-    
-    // Try geolocation if no saved location
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         const position = { lat: coords.latitude, lng: coords.longitude };
         setPos(position);
-        setLocationPickerPos(position);
-        // Save location
-        localStorage.setItem('user-location', JSON.stringify(position));
       },
       (err) => {
         console.error("Geo error:", err);
       }
     );
   }, []);
-  
-  // Location picker handlers
-  const handleLocationPicker = () => {
-    setShowLocationPicker(true);
-    setLocationPickerPos(pos);
-  };
-
-  const handleLocationConfirm = () => {
-    if (locationPickerPos) {
-      setPos(locationPickerPos);
-      setShowLocationPicker(false);
-      
-      // Save the selected location
-      localStorage.setItem('user-location', JSON.stringify(locationPickerPos));
-    }
-  };
-
-  const handleMapClick = (e: google.maps.MapMouseEvent) => {
-    if (e.latLng) {
-      const clickedPos = { 
-        lat: e.latLng.lat(), 
-        lng: e.latLng.lng() 
-      };
-      setLocationPickerPos(clickedPos);
-    }
-  };
-
-  const onPlaceSelected = () => {
-    if (autocompleteRef.current) {
-      const place = autocompleteRef.current.getPlace();
-      
-      if (place.geometry?.location) {
-        const newPos = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng()
-        };
-        
-        setLocationPickerPos(newPos);
-        
-        // Center map
-        if (locationPickerMap) {
-          locationPickerMap.setCenter(newPos);
-          locationPickerMap.setZoom(14);
-        }
-      }
-    }
-  };
-
-  const onLoad = (autocomplete: google.maps.places.Autocomplete) => {
-    autocompleteRef.current = autocomplete;
-  };
-
-  const onUnmount = () => {
-    autocompleteRef.current = null;
-  };
   
   // Fetch real hospital data
   useEffect(() => {
@@ -307,109 +225,96 @@ const HealthResources: React.FC<HealthResourcesProps> = ({
 
   return (
     <div className="space-y-8">
-      <h2 className="text-2xl font-semibold">{t('health.nearbyHealthServices')}</h2>
-      <p className="text-gray-600 mb-6">{t('health.findNearbyHealthcare')}</p>
+      <h2 className="text-2xl font-semibold mb-4">{t('health.nearbyResources')}</h2>
       
       {loadError ? (
         <div className="bg-red-100 p-4 rounded">
           <p className="text-red-700">Failed to load Google Maps. Please check your connection.</p>
         </div>
       ) : !isLoaded ? (
-        <div className="p-4 border rounded flex justify-center items-center h-[300px]">
-          <div className="animate-pulse">
-            <p>Loading Map...</p>
-          </div>
+        <div className="p-4 border rounded">
+          <p>Loading Google Maps...</p>
         </div>
       ) : (
         <div className="flex flex-col md:flex-row gap-6">
+          {/* Map Section */}
           {pos && (
             <div className="w-full">
-              {/* Location selection button */}
-              <div className="mb-4 flex justify-end">
-                <button 
-                  onClick={handleLocationPicker}
-                  className="flex items-center py-2 px-4 bg-white border rounded-md shadow-sm hover:bg-gray-50 text-sm font-medium text-gray-700"
-                >
-                  <MapPin size={18} className="mr-2 text-primary-600" />
-                  Change My Location
-                </button>
-              </div>
+              <h2 className="text-2xl font-semibold mb-4">{t('health.nearbyHealthServices')}</h2>
               
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="md:w-2/3">
-                  <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                    <GoogleMap
-                      mapContainerStyle={{ width: "100%", height: "600px" }}
-                      center={pos || { lat: 0, lng: 0 }}
-                      zoom={13}
-                      options={{
-                        fullscreenControl: true,
-                        streetViewControl: false,
-                        mapTypeControl: true,
-                        zoomControl: true
-                      }}
-                    >
-                      {/* Render User Marker */}
-                      {pos && (
-                        <Marker
-                          position={pos}
-                          title="You are here"
-                          icon={{ url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png" }}
-                        />
-                      )}
+                  <GoogleMap
+                    mapContainerStyle={{ width: "100%", height: "600px" }}
+                    center={pos || { lat: 0, lng: 0 }}
+                    zoom={13}
+                    options={{
+                      fullscreenControl: true,
+                      streetViewControl: false,
+                      mapTypeControl: true,
+                      zoomControl: true
+                    }}
+                  >
+                    {/* Render User Marker */}
+                    {pos && (
+                      <Marker
+                        position={pos}
+                        title="You are here"
+                        icon={{ url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png" }}
+                      />
+                    )}
 
-                      {/* Render Hospital Markers */}
-                      {hospitals.map((hospital, index) => (
-                        <Marker
-                          key={index}
-                          position={{
-                            lat: hospital.position.lat,
-                            lng: hospital.position.lng,
-                          }}
-                          title={hospital.name}
-                          icon={{ url: "https://maps.google.com/mapfiles/ms/icons/hospitals.png" }}
-                          onClick={() => setSelectedPlace(hospital)}
-                        />
-                      ))}
+                    {/* Render Hospital Markers */}
+                    {hospitals.map((hospital, index) => (
+                      <Marker
+                        key={index}
+                        position={{
+                          lat: hospital.position.lat,
+                          lng: hospital.position.lng,
+                        }}
+                        title={hospital.name}
+                        icon={{ url: "https://maps.google.com/mapfiles/ms/icons/hospitals.png" }}
+                        onClick={() => setSelectedPlace(hospital)}
+                      />
+                    ))}
 
-                      {/* Info Window for selected hospital */}
-                      {selectedPlace && (
-                        <InfoWindow
-                          position={{
-                            lat: selectedPlace.position.lat,
-                            lng: selectedPlace.position.lng,
-                          }}
-                          onCloseClick={() => setSelectedPlace(null)}
-                        >
-                          <div className="p-2 max-w-[300px]">
-                            <h3 className="font-semibold text-lg">{selectedPlace.name}</h3>
-                            <p className="text-sm text-blue-600 font-medium mt-1">
-                              {selectedPlace.distance.toFixed(1)} km away
-                            </p>
-                            {selectedPlace.tags && (
-                              <div className="mt-2 text-sm">
-                                {selectedPlace.tags.healthcare && <p><span className="font-medium">Type:</span> {selectedPlace.tags.healthcare}</p>}
-                                {selectedPlace.tags.amenity && <p><span className="font-medium">Amenity:</span> {selectedPlace.tags.amenity}</p>}
-                                {selectedPlace.tags.operator && <p><span className="font-medium">Operator:</span> {selectedPlace.tags.operator}</p>}
-                                {selectedPlace.tags.address && <p><span className="font-medium">Address:</span> {selectedPlace.tags.address}</p>}
-                                {selectedPlace.tags.phone && <p><span className="font-medium">Phone:</span> {selectedPlace.tags.phone}</p>}
-                              </div>
-                            )}
-                            <div className="mt-3 pt-2 border-t border-gray-200">
-                              <a 
-                                href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.position.lat},${selectedPlace.position.lng}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 text-sm hover:underline"
-                              >
-                                Get directions
-                              </a>
+                    {/* Info Window for selected hospital */}
+                    {selectedPlace && (
+                      <InfoWindow
+                        position={{
+                          lat: selectedPlace.position.lat,
+                          lng: selectedPlace.position.lng,
+                        }}
+                        onCloseClick={() => setSelectedPlace(null)}
+                      >
+                        <div className="p-2 max-w-[300px]">
+                          <h3 className="font-semibold text-lg">{selectedPlace.name}</h3>
+                          <p className="text-sm text-blue-600 font-medium mt-1">
+                            {selectedPlace.distance.toFixed(1)} km away
+                          </p>
+                          {selectedPlace.tags && (
+                            <div className="mt-2 text-sm">
+                              {selectedPlace.tags.healthcare && <p><span className="font-medium">Type:</span> {selectedPlace.tags.healthcare}</p>}
+                              {selectedPlace.tags.amenity && <p><span className="font-medium">Amenity:</span> {selectedPlace.tags.amenity}</p>}
+                              {selectedPlace.tags.operator && <p><span className="font-medium">Operator:</span> {selectedPlace.tags.operator}</p>}
+                              {selectedPlace.tags.address && <p><span className="font-medium">Address:</span> {selectedPlace.tags.address}</p>}
+                              {selectedPlace.tags.phone && <p><span className="font-medium">Phone:</span> {selectedPlace.tags.phone}</p>}
                             </div>
+                          )}
+                          <div className="mt-3 pt-2 border-t border-gray-200">
+                            <a 
+                              href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.position.lat},${selectedPlace.position.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 text-sm hover:underline"
+                            >
+                              Get directions
+                            </a>
                           </div>
-                        </InfoWindow>
-                      )}
-                    </GoogleMap>
-                  </div>
+                        </div>
+                      </InfoWindow>
+                    )}
+                  </GoogleMap>
                 </div>
                 
                 {/* Nearby Hospitals List */}
@@ -490,115 +395,6 @@ const HealthResources: React.FC<HealthResourcesProps> = ({
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Location Picker Modal */}
-      {showLocationPicker && isLoaded && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl overflow-hidden shadow-xl">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Set Your Location</h3>
-              <button 
-                onClick={() => setShowLocationPicker(false)}
-                className="p-1 rounded-full hover:bg-gray-100"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="p-4 border-b">
-              <div className="relative">
-                <div className="flex items-center w-full">
-                  <div className="relative flex-grow">
-                    <Autocomplete
-                      onLoad={onLoad}
-                      onPlaceChanged={onPlaceSelected}
-                      onUnmount={onUnmount}
-                    >
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Search for a location..."
-                          className="pl-10 pr-4 py-2 border rounded-md w-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          value={locationSearch}
-                          onChange={(e) => setLocationSearch(e.target.value)}
-                        />
-                        <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                      </div>
-                    </Autocomplete>
-                  </div>
-                </div>
-                
-                <p className="mt-2 text-sm text-gray-500">
-                  Search for a location or click on the map to set your location
-                </p>
-              </div>
-            </div>
-            
-            <div className="h-[400px] relative">
-              <GoogleMap
-                mapContainerStyle={{ width: "100%", height: "100%" }}
-                center={locationPickerPos || pos || { lat: 20.5937, lng: 78.9629 }}
-                zoom={14}
-                onClick={handleMapClick}
-                onLoad={(map) => setLocationPickerMap(map)}
-              >
-                {locationPickerPos && (
-                  <Marker
-                    position={locationPickerPos}
-                    draggable={true}
-                    onDragEnd={(e) => {
-                      if (e.latLng) {
-                        setLocationPickerPos({
-                          lat: e.latLng.lat(),
-                          lng: e.latLng.lng()
-                        });
-                      }
-                    }}
-                  />
-                )}
-              </GoogleMap>
-              
-              {/* Crosshair button */}
-              <button 
-                className="absolute bottom-4 right-4 p-3 bg-white rounded-full shadow-md hover:bg-gray-100"
-                onClick={() => {
-                  if (locationPickerMap && navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                      ({ coords }) => {
-                        const position = { lat: coords.latitude, lng: coords.longitude };
-                        setLocationPickerPos(position);
-                        locationPickerMap.setCenter(position);
-                      },
-                      (err) => {
-                        console.error("Geo error:", err);
-                      }
-                    );
-                  }
-                }}
-                title="Use my current location"
-              >
-                <Crosshair size={20} />
-              </button>
-            </div>
-            
-            <div className="p-4 border-t flex justify-end">
-              <button
-                onClick={() => setShowLocationPicker(false)}
-                className="px-4 py-2 border rounded-md mr-2 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleLocationConfirm}
-                className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
-                disabled={!locationPickerPos}
-              >
-                Confirm Location
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
